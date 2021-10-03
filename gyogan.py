@@ -1,4 +1,7 @@
-#-*- using:utf-8 -*-
+#
+# -*- using:utf-8 -*-
+#> $Date: 2021/10/03 17:58:00 $
+#
 import time
 import math
 import tkinter as tk
@@ -53,6 +56,11 @@ class Application(tk.Frame):
 
 
 
+	def copy_pixel(self, src, xy, dst, uv):
+		dst.putpixel(uv, src.getpixel(xy))
+
+
+
 	def disp_image(self, filename):
 		# 画像を加工して表示
 		if not filename:
@@ -68,56 +76,63 @@ class Application(tk.Frame):
 		start_time = time.time()
 
 
+
 		# 画像を加工
 		image_width_half	= int(image_width / 2)
 		image_height_half	= int(image_height / 2)
 #		print(image_height_half, image_width_half,  sep="\t")
 
 		r_max = math.sqrt(image_width_half * image_width_half + image_height_half * image_height_half)
+		r_max = max(image_width_half, image_height_half)
 		s_max = r_max * 2 / math.pi
 #		print(r_max, s_max,  sep="\t")
 
 		pil_image_resized = Image.new("RGB", (2 * image_width_half, 2 * image_height_half), color = "#808080")
-		pil_image_resized.putpixel((image_width_half, image_height_half), pil_image.getpixel((image_width_half, image_height_half)))
+		self.copy_pixel(pil_image, (image_width_half, image_height_half), pil_image_resized, (image_width_half, image_height_half))
 
 		# range は 1 から始まるらしいよ（0 が含まれない）
-		for y in range(0, image_height_half):
-			for x in reversed(range(y, image_width_half, 1)):
+		for y in range(0, min(r_max, image_height_half)):
+			for x in reversed(range(y, min(r_max, image_width_half), 1)):
 #				print(y, x,  sep="\t", end="\t")
 
 				if x < y:
-#					print("break-1")
+#					print("1-break")
 					break
 
 				r = math.sqrt(x * x + y * y)
+				
+				if r_max < r:
+#					print("2-continue")
+					continue
+				
 				s = s_max * math.sin(r / s_max)
 #				print(r, s, sep="\t", end="\t")
 
 				if int(s) == 0:	# ちょい適当
-#					print("break-2")
+#					print("3-break")
 					break
 
 				u = int(x / r * s)
 				v = int(y / r * s)
 #				print(v, u,  sep="\t", end="\t")
 
-				pil_image_resized.putpixel((image_width_half + u, image_height_half + v), pil_image.getpixel((image_width_half + x, image_height_half + y)))
-				pil_image_resized.putpixel((image_width_half + u, image_height_half - v), pil_image.getpixel((image_width_half + x, image_height_half - y)))
-				pil_image_resized.putpixel((image_width_half - u, image_height_half + v), pil_image.getpixel((image_width_half - x, image_height_half + y)))
-				pil_image_resized.putpixel((image_width_half - u, image_height_half - v), pil_image.getpixel((image_width_half - x, image_height_half - y)))
+				self.copy_pixel(pil_image, (image_width_half + x, image_height_half + y), pil_image_resized, (image_width_half + u, image_height_half + v))
+				self.copy_pixel(pil_image, (image_width_half + x, image_height_half - y), pil_image_resized, (image_width_half + u, image_height_half - v))
+				self.copy_pixel(pil_image, (image_width_half - x, image_height_half + y), pil_image_resized, (image_width_half - u, image_height_half + v))
+				self.copy_pixel(pil_image, (image_width_half - x, image_height_half - y), pil_image_resized, (image_width_half - u, image_height_half - v))
 
 				if image_height_half <= x:
-#					print("continue-1")
+#					print("4-continue")
 					continue
 
 				if image_width_half <= y:
-#					print("continue-2")
+#					print("5-continue")
 					continue
 
-				pil_image_resized.putpixel((image_width_half + v, image_height_half + u), pil_image.getpixel((image_width_half + y, image_height_half + x)))
-				pil_image_resized.putpixel((image_width_half + v, image_height_half - u), pil_image.getpixel((image_width_half + y, image_height_half - x)))
-				pil_image_resized.putpixel((image_width_half - v, image_height_half + u), pil_image.getpixel((image_width_half - y, image_height_half + x)))
-				pil_image_resized.putpixel((image_width_half - v, image_height_half - u), pil_image.getpixel((image_width_half - y, image_height_half - x)))
+				self.copy_pixel(pil_image, (image_width_half + y, image_height_half + x), pil_image_resized, (image_width_half + v, image_height_half + u))
+				self.copy_pixel(pil_image, (image_width_half - y, image_height_half + x), pil_image_resized, (image_width_half - v, image_height_half + u))
+				self.copy_pixel(pil_image, (image_width_half + y, image_height_half - x), pil_image_resized, (image_width_half + v, image_height_half - u))
+				self.copy_pixel(pil_image, (image_width_half - y, image_height_half - x), pil_image_resized, (image_width_half - v, image_height_half - u))
 
 #				print("eol")
 
