@@ -3,6 +3,7 @@ import cv2
 
 files = glob.glob(r'D:\Desktop\*.jpg')
 files = glob.glob(r'D:\AH-4832\gyogan\gyogan.png')
+files = glob.glob(r'D:\AH-4832\gyogan\OSU07.jpg')
 
 cascade = cv2.CascadeClassifier(r'C:\Users\tyasuda.TYASUDA-EPSON\AppData\Local\Programs\Python\Python36\Lib\site-packages\cv2\data\haarcascade_frontalface_default.xml')
 
