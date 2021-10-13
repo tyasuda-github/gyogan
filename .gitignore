@@ -1,5 +1,10 @@
-﻿*.jpg
-*.tsv
-*.png
+﻿*.exe
+*.jpg
+*.log
 *.pdf
+*.png
+*.ppm
+*.tab
+*.tsv
+*.url
 *.vsd
