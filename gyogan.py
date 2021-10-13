@@ -1,6 +1,6 @@
 #
-# -*- using:utf-8 -*-
-#> $Date: 2021/10/03 17:58:00 $
+# -*- coding: utf-8 -*-
+# $Date: 2021/10/08 00:49:43 $
 #
 import time
 import math
@@ -17,7 +17,7 @@ class Application(tk.Frame):
 
 		self.master.title("python で球に貼り付け")	# ウィンドウタイトル
 		self.master.geometry("1000x10")				# ウィンドウサイズ(幅x高)
-		
+
 		# メニューの作成
 		self.create_menu()
 
@@ -100,11 +100,11 @@ class Application(tk.Frame):
 					break
 
 				r = math.sqrt(x * x + y * y)
-				
+
 				if r_max < r:
 #					print("2-continue")
 					continue
-				
+
 				s = s_max * math.sin(r / s_max)
 #				print(r, s, sep="\t", end="\t")
 
@@ -142,18 +142,17 @@ class Application(tk.Frame):
 		pil_image_resized.show()
 		elapsed_time = time.time() - start_time
 		print(elapsed_time, "[sec]", sep=" ")
-		
+
 		pil_image.close()
 		pil_image_resized.close()
 
 
 
-if __name__ == "__main__":
-	root = tk.Tk()
-	app = Application(master = root)
+root = tk.Tk()
+app = Application(master = root)
 
-	# 画像画像を加工して表示（起動時に一発やってみせる）
-	filename = "gyogan.png"
-	app.disp_image(filename)
+# 画像画像を加工して表示（起動時に一発やってみせる）
+filename = "gyogan.png"
+app.disp_image(filename)
 
-	app.mainloop()
+app.mainloop()
