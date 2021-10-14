@@ -1,6 +1,6 @@
 //
 // -*- coding: utf-8 -*-
-// $Date: 2021/10/13 21:50:24 $
+// $Date: 2021/10/14 02:55:15 $
 //
 
 #include <stdio.h>
@@ -10,10 +10,16 @@
 
 // 単位は m と rad とする。
 
-void main(void)
+int main(int argc, char *argv[])
 {
 	// デバッグ
-	const uint8_t idebug = 0x08;
+//	const uint8_t idebug = (2 <= argc) ? (uint8_t)atof(argv[1]) : 0x00;
+	const uint8_t idebug = 0x01;
+
+	if(idebug){
+		printf("%s\n", argv[0]);
+		printf("idebug(0x%02X)\n", idebug);
+	}
 
 	// 魚眼の焦点距離
 	double f = 16e-3;
@@ -42,9 +48,11 @@ void main(void)
 	const uint16_t ix_max_um = (W/2/h_eps) + 0.5;
 	const uint16_t iy_max_um = (H/2/h_eps) + 0.5;
 
+	// 地上距離の刻み幅
+	const double alpha = ix_max_um / (ix_max_um + 1.0);
+
 	// 変換テーブル
-	const size_t iconv_num = (ix_max_um+1) * (iy_max_um+1) + 0.5;
-	if(idebug & 0x01){ printf("%+8u\n", iconv_num); }
+	const size_t iconv_num = (ix_max_um+1) * (iy_max_um+1);
 	uint16_t *iconv_u = (uint16_t *)calloc(sizeof(uint16_t), iconv_num);
 	uint16_t *iconv_v = (uint16_t *)calloc(sizeof(uint16_t), iconv_num);
 
@@ -53,8 +61,11 @@ void main(void)
 		exit(EXIT_FAILURE);
 	}
 
-	// 地上距離の刻み幅
-	const double alpha = ix_max_um / (ix_max_um + 1.0);
+	if(idebug & 0x01){
+		double d_max_km = d_max / 1000;
+		printf("d_max_km(%+8.3lf)\n", d_max_km);
+		printf("iconv_num(%u)\n", iconv_num);
+	}
 
 	// 地上距離の初期値
 	double d = d_max;
@@ -81,6 +92,13 @@ void main(void)
 		if((h_um_last - 0.75 < h_um && h_um < h_um_last - 0.25) || h_um_last == 0){
 			if(h_um_last == 0){
 				h_max = h;
+				double theta_max_deg = theta / M_PI * 180;
+
+				if(idebug & 0x01){
+					double h_max_mm = h_max * 1000;
+					printf("theta_max_deg(%+.3lf)\n", theta_max_deg);
+					printf("h_max_mm(%+.3lf)\n", h_max_mm);
+				}
 			}
 
 			if(idebug & 0x02){
@@ -143,7 +161,10 @@ void main(void)
 		}
 	}
 
-	if(idebug & 0x08){ printf("%u / %u\t%+8.3lf%%\n", iconv_used, iconv_num, 100.0*iconv_used/iconv_num); }
+	if(idebug & 0x01){
+		double percent = 100.0*iconv_used/iconv_num;
+		printf("iconv: %u / %u = %.3lf%%\n", iconv_used, iconv_num, percent);
+	}
 
 	//-------------------------------------------------------------------------
 
@@ -151,28 +172,47 @@ void main(void)
 	char *file_r = "map.ppm";
 	FILE *fp_r = fopen(file_r, "r");
 	if(fp_r == NULL){ printf("oops! R %s\n", file_r); exit(EXIT_FAILURE); }
-	const uint16_t imap_w = 1600;
-	const uint16_t imap_h = 1600;
+	uint32_t imap_w = 6944;
+	uint32_t imap_h = 4432;
 
-	uint8_t *imap_cr = (uint8_t *)calloc(sizeof(uint8_t), imap_w * imap_h);
-	uint8_t *imap_cg = (uint8_t *)calloc(sizeof(uint8_t), imap_w * imap_h);
-	uint8_t *imap_cb = (uint8_t *)calloc(sizeof(uint8_t), imap_w * imap_h);
+	char buff[256];
+	fgets(buff, 256, fp_r);	// P3
+	fscanf(fp_r, "%lu %lu", &imap_w, &imap_h);	// 6944 4432
+	fscanf(fp_r, "%s", buff);					// 255
+
+	size_t imap_num = (imap_w * imap_h) + (32-(imap_w * imap_h) % 32);
+	uint8_t *imap_cr = (uint8_t *)calloc(sizeof(uint8_t), imap_num);
+	uint8_t *imap_cg = (uint8_t *)calloc(sizeof(uint8_t), imap_num);
+	uint8_t *imap_cb = (uint8_t *)calloc(sizeof(uint8_t), imap_num);
 
 	if(imap_cr == NULL || imap_cg == NULL || imap_cb == NULL){
 		printf("oops! short of memory\n");
 		exit(EXIT_FAILURE);
 	}
 
-	char buff[256];
-	fgets(buff, 256, fp_r);	// P3
-	fgets(buff, 256, fp_r);	// 1600 1600
-	fgets(buff, 256, fp_r);	// 255
+	const uint16_t imap_scale = 5;
+//	const uint16_t imap_scale = 2;
+//	const double imap_scale = 1;
+
+	if(idebug & 0x01){
+		printf("imap_w(%u)\n", imap_w);
+		printf("imap_h(%u)\n", imap_h);
+		printf("imap_level_max(%s)\n",buff);
+		printf("imap_num(%u)\n",imap_num);
+	}
+
 	size_t i = 0, ix = 0, iy = 0;
 
 	while(feof(fp_r) == 0){
 		int icr, icg, icb;
-		fscanf(fp_r, "%d%d%d", &icr, &icg, &icb);
-		if(idebug & 0x10){ printf("(%8u %4u %4u) (%4d %4d %4d)\n", i, ix, iy, icr, icg, icb); };
+
+		if(fscanf(fp_r, "%d %d %d", &icr, &icg, &icb) != 3){
+			break;
+		}
+
+		if(idebug & 0x10){
+			printf("(%8u %4u %4u) (%4d %4d %4d)\n", i, ix, iy, icr, icg, icb);
+		}
 
 		imap_cr[i] = (uint8_t)icr;
 		imap_cg[i] = (uint8_t)icg;
@@ -188,20 +228,32 @@ void main(void)
 		i++;
 	}
 
+	if(idebug & 0x01){
+		size_t imap_used = i;
+		double percent = 100.0*imap_used/imap_num;
+		printf("imap: %u / %u = %.3lf%%\n", imap_used, imap_num, percent);
+	}
+
+	fclose(fp_r);
+
+
+
+	int16_t imap_u_offset_km = +9360 + 100;
+	int16_t imap_v_offset_km = -360;
+
+	do{
+	char filename[256] = "fish_0000.ppm";
+	sprintf(filename, "fish_%04d.ppm", imap_u_offset_km);
+
+	if(idebug & 0x01){
+		printf("imap_u/v_offset_km(%+d %+d)\n", imap_u_offset_km, imap_v_offset_km);
+		fflush(stdout);
+	}
+
 	// 出力画像
-	char *file_w = "fish.ppm";
+	char *file_w = filename;
 	FILE *fp_w = fopen(file_w, "w");
 	if(fp_w == NULL){ printf("oops! W %s\n", file_w); exit(EXIT_FAILURE); }
-
-	const size_t ifish_num = (2 * ix_max_um + 1) * (2 * iy_max_um + 1);
-	if(idebug & 0x01){ printf("%+8u\n", ifish_num); }
-	uint8_t *fish_x = (uint8_t *)calloc(sizeof(uint8_t), ifish_num);
-	uint8_t *fish_y = (uint8_t *)calloc(sizeof(uint8_t), ifish_num);
-
-	if(iconv_u == NULL || iconv_v == NULL){
-		printf("oops! short of memory\n");
-		exit(EXIT_FAILURE);
-	}
 
 	fputs("P3\n", fp_w);
 	fputs("3600 2400\n", fp_w);	// W H
@@ -228,9 +280,14 @@ void main(void)
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
 			}else{
-				size_t imap_u = imap_w / 2 - iu_km / 16;	// 左
-				size_t imap_v = imap_h / 2 - iv_km / 16;	// 上
-				size_t i = imap_v * imap_h + imap_u;
+				size_t imap_u = imap_w / 2 - iu_km / imap_scale + imap_u_offset_km;	// 左
+				size_t imap_v = imap_h / 2 - iv_km / imap_scale + imap_v_offset_km;	// 上
+				size_t i = imap_v * imap_w + imap_u;
+
+				if(imap_num <= i){
+					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					exit(EXIT_FAILURE);
+				}
 
 				icr = imap_cr[i];
 				icg = imap_cg[i];
@@ -254,9 +311,14 @@ void main(void)
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
 			}else{
-				size_t imap_u = iu_km / 16 + imap_w / 2;	// 右
-				size_t imap_v = imap_h / 2 - iv_km / 16;	// 上
-				size_t i = imap_v * imap_h + imap_u;
+				size_t imap_u = iu_km / imap_scale + imap_w / 2 + imap_u_offset_km;	// 右
+				size_t imap_v = imap_h / 2 - iv_km / imap_scale + imap_v_offset_km;	// 上
+				size_t i = imap_v * imap_w + imap_u;
+
+				if(imap_num <= i){
+					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					exit(EXIT_FAILURE);
+				}
 
 				icr = imap_cr[i];
 				icg = imap_cg[i];
@@ -287,9 +349,14 @@ void main(void)
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
 			}else{
-				size_t imap_u = imap_w / 2 - iu_km / 16;	// 左
-				size_t imap_v = iv_km / 16 + imap_h / 2;	// 下
-				size_t i = imap_v * imap_h + imap_u;
+				size_t imap_u = imap_w / 2 - iu_km / imap_scale + imap_u_offset_km;	// 左
+				size_t imap_v = iv_km / imap_scale + imap_h / 2 + imap_v_offset_km;	// 下
+				size_t i = imap_v * imap_w + imap_u;
+
+				if(imap_num <= i){
+					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					exit(EXIT_FAILURE);
+				}
 
 				icr = imap_cr[i];
 				icg = imap_cg[i];
@@ -313,9 +380,14 @@ void main(void)
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
 			}else{
-				size_t imap_u = iu_km / 16 + imap_w / 2;	// 右
-				size_t imap_v = iv_km / 16 + imap_h / 2;	// 下
-				size_t i = imap_v * imap_h + imap_u;
+				size_t imap_u = iu_km / imap_scale + imap_w / 2 + imap_u_offset_km;	// 右
+				size_t imap_v = iv_km / imap_scale + imap_h / 2 + imap_v_offset_km;	// 下
+				size_t i = imap_v * imap_w + imap_u;
+
+				if(imap_num <= i){
+					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					exit(EXIT_FAILURE);
+				}
 
 				icr = imap_cr[i];
 				icg = imap_cg[i];
@@ -331,4 +403,9 @@ void main(void)
 	}
 
 	fclose(fp_w);
+	sprintf(buff, "copy %s fish.ppm >nul", filename);
+	system(buff);
+
+	imap_u_offset_km -= 1;
+	}while(9360 - 100 <= imap_u_offset_km);
 }
