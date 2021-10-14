@@ -1,6 +1,6 @@
 //
 // -*- coding: utf-8 -*-
-// $Date: 2021/10/14 02:55:15 $
+// $Date: 2021/10/14 12:04:58 $
 //
 
 #include <stdio.h>
@@ -37,9 +37,7 @@ int main(int argc, char *argv[])
 	// 地平線
 	const double theta_max = asin(R / (a+R));
 	const double d_max = R * (M_PI / 2 - theta_max);
-
-	// 地平線
-	double h_max = 18.402e-3;
+	double h_max = 18.402;
 
 	// 画素サイズ的なもの
 	const double h_eps = 10e-6;
@@ -51,21 +49,80 @@ int main(int argc, char *argv[])
 	// 地上距離の刻み幅
 	const double alpha = ix_max_um / (ix_max_um + 1.0);
 
-	// 変換テーブル
-	const size_t iconv_num = (ix_max_um+1) * (iy_max_um+1);
-	uint16_t *iconv_u = (uint16_t *)calloc(sizeof(uint16_t), iconv_num);
-	uint16_t *iconv_v = (uint16_t *)calloc(sizeof(uint16_t), iconv_num);
+	//-------------------------------------------------------------------------
 
-	if(iconv_u == NULL || iconv_v == NULL){
+	// ワープマップ
+	const size_t iwarp_num = (ix_max_um+1) * (iy_max_um+1);
+	uint16_t *iwarp_u = (uint16_t *)calloc(sizeof(uint16_t), iwarp_num);
+	uint16_t *iwarp_v = (uint16_t *)calloc(sizeof(uint16_t), iwarp_num);
+
+	if(iwarp_u == NULL || iwarp_v == NULL){
 		printf("oops! short of memory\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if(idebug & 0x01){
-		double d_max_km = d_max / 1000;
+		const double d_max_km = d_max / 1000;
 		printf("d_max_km(%+8.3lf)\n", d_max_km);
-		printf("iconv_num(%u)\n", iconv_num);
+		printf("iwarp_num(%u)\n", iwarp_num);
 	}
+
+	//-------------------------------------------------------------------------
+
+	// ワープマップ読込
+	size_t iwarp_used = 0;
+	const char *file_warp = "warp_map.ppm";
+	FILE *fp_warp = fopen(file_warp, "r");
+
+	if(fp_warp == NULL){
+
+	}else{
+		char buff[256];
+		uint16_t iwarp_w, iwarp_h;
+		fgets(buff, 256, fp_warp);						// P3
+		fscanf(fp_warp, "%lu %lu", &iwarp_w, &iwarp_h);	// 6944 4432
+		fscanf(fp_warp, "%s", buff);					// 255
+
+		if(idebug & 0x01){
+			printf("iwarp_w(%u)\n", iwarp_w);
+			printf("iwarp_h(%u)\n", iwarp_h);
+			printf("iwarp_level_max(%s)\n", buff);
+			printf("iwarp_num(%u)\n",iwarp_num);
+		}
+
+		size_t i = 0, ix = 0, iy = 0;
+
+		while(feof(fp_warp) == 0){
+			int iu_km, iv_km, inodata;
+
+			if(fscanf(fp_warp, "%d %d %d", &iu_km, &iv_km, &inodata) != 3){
+				break;
+			}
+
+			if(idebug & 0x08){
+				printf("(%8u %4u %4u) (%4d %4d %4d)\n", i, ix, iy, iu_km, iv_km, inodata);
+			}
+
+			iwarp_u[i] = (uint16_t)iu_km;
+			iwarp_v[i] = (uint16_t)iv_km;
+
+			if(ix == iwarp_w-1){
+				ix = 0;
+				iy++;
+			}else{
+				ix++;
+			}
+
+			i++;
+		}
+
+		iwarp_used = i;
+		fclose(fp_warp);
+	}
+
+	//-------------------------------------------------------------------------
+
+	// ワープマップ作成
 
 	// 地上距離の初期値
 	double d = d_max;
@@ -73,10 +130,7 @@ int main(int argc, char *argv[])
 	// 直前の像高計算結果
 	double h_um_last = 0;
 
-	// テーブル使用率
-	size_t iconv_used = 0;
-
-	while(1){
+	while(fp_warp){
 		// 中間変数
 		double phi = d / R;
 
@@ -90,7 +144,7 @@ int main(int argc, char *argv[])
 		double h_um = h / h_eps;
 
 		if((h_um_last - 0.75 < h_um && h_um < h_um_last - 0.25) || h_um_last == 0){
-			if(h_um_last == 0){
+			if(h && h_max == 0){
 				h_max = h;
 				double theta_max_deg = theta / M_PI * 180;
 
@@ -127,20 +181,20 @@ int main(int argc, char *argv[])
 
 				if(iy_um <= iy_max_um){
 					size_t i = iy_um * ix_max_um + ix_um;
-					if(iconv_num <= i){ printf("oops! A %+8u (%+4u %+4u)um\n", i, ix_um, iy_um); exit(EXIT_FAILURE); }
+					if(iwarp_num <= i){ printf("oops! A %+8u (%+4u %+4u)um\n", i, ix_um, iy_um); exit(EXIT_FAILURE); }
 					if(idebug & 0x04){ printf("  %+8u A (%+4u %+4u)um (%+4u %+4u)km\n", i, ix_um, iy_um, iu_km, iv_km); }
-					iconv_u[i] = iu_km;
-					iconv_v[i] = iv_km;
-					iconv_used++;
+					iwarp_u[i] = iu_km;
+					iwarp_v[i] = iv_km;
+					iwarp_used++;
 				}
 
 				if(ix_um <= iy_max_um && iy_um <= ix_max_um){
 					size_t i = ix_um * ix_max_um + iy_um;
-					if(iconv_num <= i){ printf("oops! iB %+8u (%+4u %+4u)um\n", i, iy_um, ix_um); exit(EXIT_FAILURE); }
+					if(iwarp_num <= i){ printf("oops! iB %+8u (%+4u %+4u)um\n", i, iy_um, ix_um); exit(EXIT_FAILURE); }
 					if(idebug & 0x04){ printf("  %+8u iB (%+4u %+4u)um (%+4u %+4u)km\n", i, iy_um, ix_um, iv_km, iu_km); }
-					iconv_u[i] = iv_km;
-					iconv_v[i] = iu_km;
-					iconv_used++;
+					iwarp_u[i] = iv_km;
+					iwarp_v[i] = iu_km;
+					iwarp_used++;
 				}
 			}
 
@@ -161,14 +215,45 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	//-------------------------------------------------------------------------
+
 	if(idebug & 0x01){
-		double percent = 100.0*iconv_used/iconv_num;
-		printf("iconv: %u / %u = %.3lf%%\n", iconv_used, iconv_num, percent);
+		double percent = 100.0*iwarp_used/iwarp_num;
+		printf("iwarp: %u / %u = %.3lf%%\n", iwarp_used, iwarp_num, percent);
 	}
 
 	//-------------------------------------------------------------------------
 
-	// 地図画像
+	// ワープマップ保存
+	if(fp_warp == NULL){
+		fp_warp = fopen("warp_map_verify.ppm", "w");
+		if(fp_warp == NULL){ printf("oops! W %s\n", file_warp); exit(EXIT_FAILURE); }
+
+		// 地球の円周
+		const uint16_t id_max_km = d_max / 1000 + 0.5;
+
+		fprintf(fp_warp, "P3\n");
+		fprintf(fp_warp, "%u %u\n", ix_max_um, iy_max_um);
+		fprintf(fp_warp, "%u\n", id_max_km);	// 2^16 = 65536
+
+		for(uint16_t iy_um = 0; iy_um < iy_max_um; iy_um++){
+			for(uint16_t ix_um = 0; ix_um < ix_max_um; ix_um++){
+				size_t i = iy_um * ix_max_um + ix_um;
+				uint16_t ux_km = iwarp_u[i];
+				uint16_t uy_km = iwarp_v[i];
+				int no_data = (ux_km == 0 && uy_km == 0) ? id_max_km : 0;
+				fprintf(fp_warp, "%u %u %u ", ux_km, uy_km, no_data);
+			}
+
+			fprintf(fp_warp, "\n");
+		}
+
+		fclose(fp_warp);
+	}
+
+	//-------------------------------------------------------------------------
+
+	// 地図画像読込
 	char *file_r = "map.ppm";
 	FILE *fp_r = fopen(file_r, "r");
 	if(fp_r == NULL){ printf("oops! R %s\n", file_r); exit(EXIT_FAILURE); }
@@ -236,7 +321,7 @@ int main(int argc, char *argv[])
 
 	fclose(fp_r);
 
-
+	//-------------------------------------------------------------------------
 
 	int16_t imap_u_offset_km = +9360 + 100;
 	int16_t imap_v_offset_km = -360;
@@ -274,8 +359,8 @@ int main(int argc, char *argv[])
 			unsigned iy = iy_max_um - iy_um;	// 上
 
 			size_t i = iy * ix_max_um + ix;
-			uint16_t iu_km = iconv_u[i];
-			uint16_t iv_km = iconv_v[i];
+			uint16_t iu_km = iwarp_u[i];
+			uint16_t iv_km = iwarp_v[i];
 
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
@@ -305,8 +390,8 @@ int main(int argc, char *argv[])
 			unsigned iy = iy_max_um - iy_um;	// 上
 
 			size_t i = iy * ix_max_um + ix;
-			uint16_t iu_km = iconv_u[i];
-			uint16_t iv_km = iconv_v[i];
+			uint16_t iu_km = iwarp_u[i];
+			uint16_t iv_km = iwarp_v[i];
 
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
@@ -343,8 +428,8 @@ int main(int argc, char *argv[])
 			unsigned iy = iy_um - iy_max_um;	// 下
 
 			size_t i = iy * ix_max_um + ix;
-			uint16_t iu_km = iconv_u[i];
-			uint16_t iv_km = iconv_v[i];
+			uint16_t iu_km = iwarp_u[i];
+			uint16_t iv_km = iwarp_v[i];
 
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
@@ -374,8 +459,8 @@ int main(int argc, char *argv[])
 			unsigned iy = iy_um - iy_max_um;	// 下
 
 			size_t i = iy * ix_max_um + ix;
-			uint16_t iu_km = iconv_u[i];
-			uint16_t iv_km = iconv_v[i];
+			uint16_t iu_km = iwarp_u[i];
+			uint16_t iv_km = iwarp_v[i];
 
 			if(iu_km == 0 && iv_km == 0){
 				fprintf(fp_w, "%u %u %u ", 0, 0, 0);
