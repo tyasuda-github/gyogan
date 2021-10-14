@@ -1,6 +1,6 @@
 //
 // -*- coding: utf-8 -*-
-// $Date: 2021/10/14 12:04:58 $
+// $Date: 2021/10/14 14:02:35 $
 //
 
 #include <stdio.h>
@@ -275,9 +275,16 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	const uint16_t imap_scale = 5;
+//	const uint16_t imap_scale = 16;
+//	const uint16_t imap_scale = 8;
+//	const uint16_t imap_scale = 5;
+//	const uint16_t imap_scale = 4;
+//	const uint16_t imap_scale = 3;
 //	const uint16_t imap_scale = 2;
-//	const double imap_scale = 1;
+//	const double   imap_scale = 1.5;
+//	const uint16_t imap_scale = 1;
+	const double   imap_scale = 0.8;
+//	const double   imap_scale = 0.5;
 
 	if(idebug & 0x01){
 		printf("imap_w(%u)\n", imap_w);
@@ -323,8 +330,12 @@ int main(int argc, char *argv[])
 
 	//-------------------------------------------------------------------------
 
-	int16_t imap_u_offset_km = +9360 + 100;
-	int16_t imap_v_offset_km = -360;
+//	int16_t imap_u_offset_km = +9360 + 100;
+//	int16_t imap_v_offset_km = -360;
+//	int16_t imap_u_offset_km = 0;
+//	int16_t imap_v_offset_km = -300;
+	int16_t imap_u_offset_km = 0;
+	int16_t imap_v_offset_km = 0;
 
 	do{
 	char filename[256] = "fish_0000.ppm";
@@ -370,13 +381,15 @@ int main(int argc, char *argv[])
 				size_t i = imap_v * imap_w + imap_u;
 
 				if(imap_num <= i){
-					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
-					exit(EXIT_FAILURE);
+//					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					icr = 255;
+					icg = 0;
+					icb = 0;
+				}else{
+					icr = imap_cr[i];
+					icg = imap_cg[i];
+					icb = imap_cb[i];
 				}
-
-				icr = imap_cr[i];
-				icg = imap_cg[i];
-				icb = imap_cb[i];
 
 //				fprintf(fp_w, "%u %u %u ", imap_u % 256, imap_v % 256, 0);	// R G B
 				fprintf(fp_w, "%u %u %u ", icr, icg, icb);	// R G B
@@ -401,13 +414,15 @@ int main(int argc, char *argv[])
 				size_t i = imap_v * imap_w + imap_u;
 
 				if(imap_num <= i){
-					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
-					exit(EXIT_FAILURE);
+//					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					icr = 255;
+					icg = 0;
+					icb = 0;
+				}else{
+					icr = imap_cr[i];
+					icg = imap_cg[i];
+					icb = imap_cb[i];
 				}
-
-				icr = imap_cr[i];
-				icg = imap_cg[i];
-				icb = imap_cb[i];
 
 //				fprintf(fp_w, "%u %u %u ", imap_u % 256, imap_v % 256, 0);	// R G B
 				fprintf(fp_w, "%u %u %u ", icr, icg, icb);	// R G B
@@ -439,13 +454,15 @@ int main(int argc, char *argv[])
 				size_t i = imap_v * imap_w + imap_u;
 
 				if(imap_num <= i){
-					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
-					exit(EXIT_FAILURE);
+//					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					icr = 255;
+					icg = 0;
+					icb = 0;
+				}else{
+					icr = imap_cr[i];
+					icg = imap_cg[i];
+					icb = imap_cb[i];
 				}
-
-				icr = imap_cr[i];
-				icg = imap_cg[i];
-				icb = imap_cb[i];
 
 //				fprintf(fp_w, "%u %u %u ", imap_u % 256, imap_v % 256, 0);	// R G B
 				fprintf(fp_w, "%u %u %u ", icr, icg, icb);	// R G B
@@ -470,13 +487,15 @@ int main(int argc, char *argv[])
 				size_t i = imap_v * imap_w + imap_u;
 
 				if(imap_num <= i){
-					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
-					exit(EXIT_FAILURE);
+//					printf("imap_u/v(%u %u) i(%u) imap_num(%u)\n", imap_u, imap_v, i, imap_num);
+					icr = 255;
+					icg = 0;
+					icb = 0;
+				}else{
+					icr = imap_cr[i];
+					icg = imap_cg[i];
+					icb = imap_cb[i];
 				}
-
-				icr = imap_cr[i];
-				icg = imap_cg[i];
-				icb = imap_cb[i];
 
 //				fprintf(fp_w, "%u %u %u ", imap_u % 256, imap_v % 256, 0);	// R G B
 				fprintf(fp_w, "%u %u %u ", icr, icg, icb);	// R G B
@@ -492,5 +511,6 @@ int main(int argc, char *argv[])
 	system(buff);
 
 	imap_u_offset_km -= 1;
-	}while(9360 - 100 <= imap_u_offset_km);
+//	}while(9360 - 100 <= imap_u_offset_km);
+	}while(0);
 }
