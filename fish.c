@@ -1,6 +1,6 @@
 //
 // -*- coding: utf-8 -*-
-// $Date: 2021/10/15 00:44:48 $
+// $Date: 2021/10/26 02:12:47 $
 //
 
 #include <stdio.h>
@@ -16,11 +16,12 @@
 
 
 // センサーサイズ
-const double W = 36e-3;
-const double H = 24e-3;
+// 8192pixel x 2.5um = 20.48mm
+const double W = 36e-3;	// 20.48e-3;
+const double H = 36e-3;	// 20.48e-3;
 
 // 画素サイズ的なもの
-const double h_eps = 10e-6;
+const double px_size = 10e-6;
 
 // 魚眼の焦点距離
 const double f = 16e-3;
@@ -33,16 +34,23 @@ const double R = 6371e3;
 
 
 
+double deg(double rad)
+{
+	return rad / M_PI * 180;
+}
+
+
+
 double warp(double h)
 {
-	// 入射角
+	// 入射角（半画角）
 	const double theta = 2 * asin(h / 2 / f);
 
 	// 中間変数
 	const double t = 1 / tan(theta);
 	const double s = A/R + 1;
 
-	// 二次方程式
+	// 二次方程式の係数と判別式
 	const double a = t*t + 1;
 	const double bd = -s;
 	const double c = s*s - t*t;
@@ -50,7 +58,7 @@ double warp(double h)
 
 	const double cos_phi = (-bd + sqrt(dd)) / a;
 
-	// 地球の角度
+	// 地球の中心の角度
 	const double phi = acos(cos_phi);
 
 	// 地表の距離
@@ -58,6 +66,8 @@ double warp(double h)
 
 	return D;
 }
+
+
 
 int main(int argc, char *argv[])
 {
@@ -81,11 +91,21 @@ int main(int argc, char *argv[])
 	const double phi_max = M_PI / 2  - theta_max;
 
 	// センサーの第一象限サイズ
-	const uint16_t ix_max_um = (W/2/h_eps) + 0.5;
-	const uint16_t iy_max_um = (H/2/h_eps) + 0.5;
+	const uint16_t ix_max_px = (W/2/px_size) + 0.5;
+	const uint16_t iy_max_px = (H/2/px_size) + 0.5;
+
+	if(idebug & 0x01){
+		printf("theta_max [deg]\t: %+8.3lf\n", deg(theta_max));
+		printf("D_max [km]\t: %+8.3lf\n", D_max / 1000);
+		printf("h_max [mm]\t: %+8.3lf\n", h_max * 1000);
+		printf("phi_max [deg]\t: %+8.3lf\n", deg(phi_max));
+		printf("ix_max_px [px]\t: %u\n", ix_max_px);
+		printf("iy_max_px [px]\t: %u\n", iy_max_px);
+		fflush(stdout);
+	}
 
 	// ワープマップ
-	const size_t iwarp_num = ix_max_um * iy_max_um;
+	const size_t iwarp_num = ix_max_px * iy_max_px;
 	double *warp_u = (double *)calloc(sizeof(double), iwarp_num);
 	double *warp_v = (double *)calloc(sizeof(double), iwarp_num);
 
@@ -100,10 +120,10 @@ int main(int argc, char *argv[])
 	}
 
 	// ワープマップ作成
-	for(uint16_t iy_um = 0; iy_um < iy_max_um; iy_um++){
-		for(uint16_t ix_um = iy_um; ix_um < ix_max_um; ix_um++){
+	for(uint16_t iy_px = 0; iy_px < iy_max_px; iy_px++){
+		for(uint16_t ix_px = iy_px; ix_px < ix_max_px; ix_px++){
 			// 像高
-			double h = sqrt(ix_um * ix_um + iy_um * iy_um) * h_eps;
+			double h = sqrt(ix_px * ix_px + iy_px * iy_px) * px_size;
 
 			if(h_max < h){
 				break;
@@ -111,15 +131,16 @@ int main(int argc, char *argv[])
 
 			double d = warp(h);
 
-			double u_km = ix_um / h * d * h_eps / 1000;
-			double v_km = iy_um / h * d * h_eps / 1000;
+			double u_km = ix_px / h * d * px_size / 1000;
+			double v_km = iy_px / h * d * px_size / 1000;
+//			printf("%u %u %+8.3lf %+8.3lf\n", ix_px, iy_px, u_km, v_km);
 
-			size_t i = iy_um * ix_max_um + ix_um;
+			size_t i = iy_px * ix_max_px + ix_px;
 			warp_u[i] = u_km;
 			warp_v[i] = v_km;
 
-			if(ix_um < iy_max_um){
-				size_t i = ix_um * ix_max_um + iy_um;
+			if(ix_px < iy_max_px){
+				size_t i = ix_px * ix_max_px + iy_px;
 				warp_u[i] = v_km;
 				warp_v[i] = u_km;
 			}
@@ -127,7 +148,7 @@ int main(int argc, char *argv[])
 	}
 
 	// ワープマップ保存
-	if(0){
+	if(idebug & 0x10){
 		const char *file_warp= "warp_map_verify.ppm";
 		FILE *fp_warp = fopen(file_warp, "w");
 
@@ -138,28 +159,27 @@ int main(int argc, char *argv[])
 
 		const uint16_t iD_max_km = D_max / 1000;
 		fprintf(fp_warp, "P3\n");
-		fprintf(fp_warp, "%u %u\n", ix_max_um, iy_max_um);
+		fprintf(fp_warp, "%u %u\n", ix_max_px, iy_max_px);
 		fprintf(fp_warp, "%u\n", iD_max_km);	// 2^16 = 65536
 
-		for(uint16_t iy_um = 0; iy_um < iy_max_um; iy_um++){
-			for(uint16_t ix_um = 0; ix_um < ix_max_um; ix_um++){
-				size_t i = iy_um * ix_max_um + ix_um;
-				double u_km = warp_u[i];
-				double v_km = warp_v[i];
+		for(uint16_t iy_px = 0; iy_px < iy_max_px; iy_px++){
+			for(uint16_t ix_px = 0; ix_px < ix_max_px; ix_px++){
+				size_t i = iy_px * ix_max_px + ix_px;
+				uint16_t iu_km = warp_u[i] + 0.5;
+				uint16_t iv_km = warp_v[i] + 0.5;
 				uint16_t inodata = 0;
 
-				if(u_km == 0 && v_km == 0){
+				if(iu_km == 0 && iv_km == 0){
 					inodata = iD_max_km;
 				}
 
-				fprintf(fp_warp, "%u %u %u ", u_km, v_km, inodata);
+				fprintf(fp_warp, "%u %u %u ", iu_km, iv_km, inodata);
 			}
 
 			fprintf(fp_warp, "\n");
 		}
 
 		fclose(fp_warp);
-		exit(EXIT_SUCCESS);
 	}
 
 
@@ -167,14 +187,44 @@ int main(int argc, char *argv[])
 	// 地図画像読込
 	char *file_r = "map.ppm";
 	FILE *fp_r = fopen(file_r, "r");
-	if(fp_r == NULL){ printf("oops! R %s\n", file_r); exit(EXIT_FAILURE); }
-	uint32_t imap_w = 6944;
-	uint32_t imap_h = 4432;
+
+	if(fp_r == NULL){
+		printf("oops! R %s\n", file_r);
+		exit(EXIT_FAILURE);
+	}
+
+	uint32_t imap_w = 0;	//= 6944;
+	uint32_t imap_h = 0;	//= 4432;
+	uint8_t imap_level_max = 0;	//= 255
 
 	char buff[256];
 	fgets(buff, 256, fp_r);	// P3
-	fscanf(fp_r, "%lu %lu", &imap_w, &imap_h);	// 6944 4432
-	fscanf(fp_r, "%s", buff);					// 255
+
+	while(1){
+		fgets(buff, 256, fp_r);
+
+		if(buff[0] == '#'){
+			continue;
+		}
+
+		if(imap_w == 0){
+			sscanf(buff, "%lu %lu", &imap_w, &imap_h);	// 6944 4432
+		}else if(imap_level_max == 0){
+			int i;
+			sscanf(buff, "%u", &i);	// 255
+			imap_level_max = i;
+			break;
+		}
+	}
+
+	if(idebug & 0x01){
+		printf("imap_w [px]\t: %u\n", imap_w);
+		printf("imap_h [px]\t: %u\n", imap_h);
+		printf("imap_level_max\t: %u\n", imap_level_max);
+		fflush(stdout);
+	}
+
+
 
 	size_t imap_num = (imap_w * imap_h) + (32-(imap_w * imap_h) % 32);
 	uint8_t *imap_cr = (uint8_t *)calloc(sizeof(uint8_t), imap_num);
@@ -186,22 +236,8 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-//	const uint16_t map_scale = 16;
-//	const uint16_t map_scale = 8;
-//	const uint16_t map_scale = 5;
-//	const uint16_t map_scale = 4;
-//	const uint16_t map_scale = 3;
-//	const uint16_t map_scale = 2;
-//	const double   map_scale = 1.5;
-//	const uint16_t map_scale = 1;
-	const double   map_scale = 0.8;
-//	const double   map_scale = 0.5;
-
 	if(idebug & 0x01){
-		printf("imap_w(%u)\n", imap_w);
-		printf("imap_h(%u)\n", imap_h);
-		printf("imap_level_max(%s)\n",buff);
-		printf("imap_num(%u)\n",imap_num);
+		printf("imap_num\t: %u\n",imap_num);
 		fflush(stdout);
 	}
 
@@ -236,28 +272,57 @@ int main(int argc, char *argv[])
 	if(idebug & 0x01){
 		size_t imap_used = i;
 		double percent = 100.0*imap_used/imap_num;
-		printf("imap: %u / %u = %.3lf%%\n", imap_used, imap_num, percent);
+		printf("imap utilize\t: %u / %u = %.3lf%%\n", imap_used, imap_num, percent);
+		fflush(stdout);
 	}
 
 	fclose(fp_r);
 
-	//-------------------------------------------------------------------------
+
+
+	// ここから魚眼画像作成開始
+
+//	const uint16_t map_scale = 16;
+//	const uint16_t map_scale = 8;
+//	const uint16_t map_scale = 5;
+//	const uint16_t map_scale = 4;
+//	const uint16_t map_scale = 3;
+	const uint16_t map_scale = 2.5;
+//	const uint16_t map_scale = 2;
+//	const double   map_scale = 1.5;
+//	const uint16_t map_scale = 1;
+//	const double   map_scale = 0.8;
+//	const double   map_scale = 0.5;
 
 //	int16_t imap_u_offset_km = +9360 + 100;
 //	int16_t imap_v_offset_km = -360;
 //	int16_t imap_u_offset_km = 0;
 //	int16_t imap_v_offset_km = -300;
 
-	int16_t imap_u_offset_km = -800;
-	int16_t imap_v_offset_km = +800;
+	int16_t imap_u_offset_km = +100;
+	int16_t imap_v_offset_km = +100;
 	int16_t ifile_cnt = 0;
 
-	while(1){
-		char file_w[256] = "fish_0000.ppm";
-		sprintf(file_w, "fish_%04d.ppm", ifile_cnt);
+	system("del fish_???.ppm >nul 2>nul");
+	system("del fish_???.png >nul 2>nul");
 
-		if(idebug & 0x20){
-			printf("file\t: %04d (%+04d %+04d)\n", ifile_cnt, imap_u_offset_km, imap_v_offset_km);
+	// 北海道
+//	imap_u_offset_km = +300;
+//	imap_v_offset_km = -200;
+
+	// 九州
+	imap_u_offset_km = -300;
+	imap_v_offset_km = +400;
+
+	int16_t imap_du_offset_km = ((+300) - (-300)) / 600;
+	int16_t imap_dv_offset_km = ((-200) - (+400)) / 600;
+
+	while(1){
+		char file_w[256] = "fish_000.ppm";
+		sprintf(file_w, "fish_%03d.ppm", ifile_cnt);
+
+		if(idebug & 0x01){
+			printf("file\t: %s (%+04d %+04d)\n", file_w, imap_u_offset_km, imap_v_offset_km);
 			fflush(stdout);
 		}
 
@@ -269,23 +334,25 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		fputs("P3\n", fp_w);
-		fputs("3600 2400\n", fp_w);	// W H
-		fputs("255\n", fp_w);
+		fprintf(fp_w, "P3\n");
+		fprintf(fp_w, "%u %u\n", ix_max_px*2, iy_max_px*2);	// W H
+		fprintf(fp_w, "255\n");
 
 		uint8_t icr;
 		uint8_t icg;
 		uint8_t icb;
 
+
+
 		// 上半分
-		for(uint16_t iy_um = 1; iy_um <= iy_max_um; iy_um++){
+		for(uint16_t iy_px = 1; iy_px <= iy_max_px; iy_px++){
 
 			// 左上
-			for(uint16_t ix_um = 1; ix_um <= ix_max_um; ix_um++){
-				unsigned ix = ix_max_um - ix_um;	// 左
-				unsigned iy = iy_max_um - iy_um;	// 上
+			for(uint16_t ix_px = 1; ix_px <= ix_max_px; ix_px++){
+				unsigned ix = ix_max_px - ix_px;	// 左
+				unsigned iy = iy_max_px - iy_px;	// 上
 
-				size_t i = iy * ix_max_um + ix;
+				size_t i = iy * ix_max_px + ix;
 
 				if(iwarp_num < i){
 					printf("%d\n", i);
@@ -317,11 +384,11 @@ int main(int argc, char *argv[])
 			}
 
 			// 右上
-			for(uint16_t ix_um = ix_max_um; ix_um < 2 * ix_max_um; ix_um++){
-				unsigned ix = ix_um - ix_max_um;	// 右
-				unsigned iy = iy_max_um - iy_um;	// 上
+			for(uint16_t ix_px = ix_max_px; ix_px < 2 * ix_max_px; ix_px++){
+				unsigned ix = ix_px - ix_max_px;	// 右
+				unsigned iy = iy_max_px - iy_px;	// 上
 
-				size_t i = iy * ix_max_um + ix;
+				size_t i = iy * ix_max_px + ix;
 
 				if(iwarp_num < i){
 					printf("%d\n", i);
@@ -352,18 +419,20 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			fprintf(fp_w, "\n");
+			fprintf(fp_w, "\n");	// 右端で改行
 		}
 
+
+
 		// 下半分
-		for(uint16_t iy_um = iy_max_um; iy_um < 2 * iy_max_um; iy_um++){
+		for(uint16_t iy_px = iy_max_px; iy_px < 2 * iy_max_px; iy_px++){
 
 			// 左下
-			for(uint16_t ix_um = 1; ix_um <= ix_max_um; ix_um++){
-				unsigned ix = ix_max_um - ix_um;	// 左
-				unsigned iy = iy_um - iy_max_um;	// 下
+			for(uint16_t ix_px = 1; ix_px <= ix_max_px; ix_px++){
+				unsigned ix = ix_max_px - ix_px;	// 左
+				unsigned iy = iy_px - iy_max_px;	// 下
 
-				size_t i = iy * ix_max_um + ix;
+				size_t i = iy * ix_max_px + ix;
 
 				if(iwarp_num < i){
 					printf("%d\n", i);
@@ -395,11 +464,11 @@ int main(int argc, char *argv[])
 			}
 
 			// 右下
-			for(uint16_t ix_um = ix_max_um; ix_um < 2 * ix_max_um; ix_um++){
-				unsigned ix = ix_um - ix_max_um;	// 右
-				unsigned iy = iy_um - iy_max_um;	// 下
+			for(uint16_t ix_px = ix_max_px; ix_px < 2 * ix_max_px; ix_px++){
+				unsigned ix = ix_px - ix_max_px;	// 右
+				unsigned iy = iy_px - iy_max_px;	// 下
 
-				size_t i = iy * ix_max_um + ix;
+				size_t i = iy * ix_max_px + ix;
 
 				if(iwarp_num < i){
 					printf("%d\n", i);
@@ -430,22 +499,32 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			fprintf(fp_w, "\n");
+			fprintf(fp_w, "\n");	// 右端で改行
 		}
+
+
 
 		fclose(fp_w);
 
-//		char cmd[256];
-//		sprintf(cmd, "magick.exe convert -resize 50%% %s %s", file_w, file_w);
-//		strcat(cmd-4, ".gif");
-//		system(cmd);
 
-		if(800 <= imap_u_offset_km){
+
+		char cmd[256];
+		sprintf(cmd, "magick.exe convert %s %s", file_w, file_w);
+		strcpy(cmd+strlen(cmd)-3, "png");
+		system(cmd);
+
+
+
+		if(imap_du_offset_km == 0 && imap_dv_offset_km == 0){
 			break;
 		}
 
-		imap_u_offset_km += 10;
-		imap_v_offset_km -= 10;
+		if(300 <= imap_u_offset_km){
+			break;
+		}
+
+		imap_u_offset_km += imap_du_offset_km;
+		imap_v_offset_km += imap_dv_offset_km;
 		ifile_cnt++;
 	}while(0);
 }
